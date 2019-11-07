@@ -7,6 +7,39 @@ import subprocess
 import sys
 import traceback
 
+
+SAE_LG="EG"
+
+messages= {
+    "NO_ARCHIVE" : {
+        "EG" : "No archive file received",
+        "FR" : "Pas d'archive reçue"
+    },
+    "FAILED_EXTRACTION": {
+        "EG" : "Unable to extract archive automatically",
+        "FR" : "Impossible d'extraire l'archive automatiquement"
+    },
+    "AND" : {
+        "EG" : "AND",
+        "FR" : "ET"
+    },
+    "ARCHIVE_FOLDER_FAILED": {
+        "EG" : "All files should be in a single folder",
+        "FR" : "Tous les fichiers doivent être dans un dossier unique"
+    },
+    "SEE": {
+        "EG" : "See",
+        "FR" : "Voir"
+    }
+}
+
+def getMessage(id):
+    if id not in messages:
+        return "<UNKNOWN MESSAGE ID: {:}>".format(id)
+    if SAE_LG not in messages[id]:
+        return "<UNSUPPORTED LANGUAGE '{:}' for message id '{:}'>".format(SAE_LG, id)
+    return messages[id][SAE_LG]
+
 class Eval:
     def __init__(self, points = 0, max_points = 1, msg=""):
         self.points = points
@@ -41,6 +74,18 @@ class EvalNode(Eval, NodeMixin):
         for node in self.descendants:
             node.msg = msg
 
+    def checkRecursive(self):
+        for node in self.descendants:
+            if node.is_leaf:
+                checkNode(node)
+
+    def checkIfBuilt(self, build_success):
+        if build_success:
+            self.checkRecursive()
+        else:
+            self.setMessageRecursive("Failed to build")
+
+
 class Student:
     def __init__(self, last_name="LastName", first_name = "FirstName"):
         self.last_name = last_name
@@ -51,12 +96,15 @@ class Group(list):
         self = students
 
     def getKey(self):
+        # For single group, use: LastName_FirstName
+        if len(self) == 1:
+            return "{:}_{:}".format(self[0].last_name,self[0].first_name).lower()
         key = ""
         for s in self:
             if len(key) != 0:
                 key += "_"
             key += s.last_name
-        return key
+        return key.lower()
 
     def findArchive(self, path, extension):
         """
@@ -87,6 +135,7 @@ class Group(list):
             options += [str(i)]
         choice = prompt(msg, options + ["n"])
         if choice == "n":
+            print ("returning None")
             return  None, False, "No archive file received"
         choice_idx = int(choice)
         archive_file = file_options[choice_idx]
@@ -109,15 +158,15 @@ class Group(list):
             status_msg += "Invalid format"
             view_result = systemCall("tar {:} -tvf {:}".format(exclude_pattern, archive_path))
             if view_result[0] != 0:
-                return None, False, "Unable to extract archive content automatically"
+                return None, False, getMessage("FAILED_EXTRACTION")
         archive_folder = os.path.dirname(archive_path)
         dst_extract = archive_folder
         dst_folder = archive_folder + "/" + self.getKey()
         nb_lines = len(view_result[1].split("\n"))
         if nb_lines != 1:
             if len(status_msg) > 0:
-                status_msg += " AND "
-            status_msg += "All files should be in a single folder"
+                status_msg += " {:} ".format(getMessage("AND"))
+            status_msg += getMessage("ARCHIVE_FOLDER_FAILED")
             dst_extract = dst_folder
             os.mkdir(dst_folder)
         else:
@@ -175,7 +224,7 @@ def evalToString(eval_root):
                 line += " " + node.msg
             else:
                 msg_index = len(oversized_messages) + 1
-                line += " see *{:}".format(msg_index)
+                line += " {:} *{:}".format(getMessage("SEE"),msg_index)
                 oversized_messages.append(node.msg)
         result_txt += line + "\n"
     for idx in range(len(oversized_messages)):
@@ -205,13 +254,17 @@ def freeTextQuestion(msg):
     print(msg)
     print("> ", end='')
     sys.stdout.flush()
-    return sys.stdin.readline().strip().lower()
+    return sys.stdin.readline().strip()
 
 def askFloat(msg):
     print(msg)
-    print("> ", end='')
-    sys.stdout.flush()
-    return float(sys.stdin.readline().strip().lower())
+    while True:
+        print("> ", end='')
+        sys.stdout.flush()
+        try:
+            return float(sys.stdin.readline().strip().lower())
+        except ValueError as e:
+            print("Not a valid number " + str(e))
 
 def checkNode(node):
     result = prompt("Is: '{:}' ok? (y(es), n(o), p(artially)".format(node.name), ['y','n','p'])
@@ -221,6 +274,10 @@ def checkNode(node):
         if (result == 'p'):
             node.points = askFloat("How many points? (max_points={:})".format(node.max_points))
         node.msg = freeTextQuestion("What is the problem?")
+
+def setRecursiveMessage(node, msg):
+    for children in self.result.descendants:
+        children.msg = msg
 
 def systemCall(cmd):
     proc = subprocess.Popen(cmd, stdout = subprocess.PIPE, stderr= subprocess.PIPE, shell=True)
