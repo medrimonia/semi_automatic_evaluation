@@ -135,7 +135,6 @@ class Group(list):
             options += [str(i)]
         choice = prompt(msg, options + ["n"])
         if choice == "n":
-            print ("returning None")
             return  None, False, "No archive file received"
         choice_idx = int(choice)
         archive_file = file_options[choice_idx]
