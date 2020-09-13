@@ -74,5 +74,7 @@ if __name__ == "__main__":
             full_path = os.path.join(args.project_path,line.strip())
             if not os.path.isfile(full_path):
                 raise RuntimeError("Failed to find file" + full_path)
-            archive.add(full_path, arcname= line.strip())
+            # Making sure all elements are in an archive
+            archive_name = os.path.join(group.getKey(),line.strip())
+            archive.add(full_path, arcname= archive_name)
     archive.close()
