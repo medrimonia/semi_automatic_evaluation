@@ -16,6 +16,9 @@ class Student:
         self.last_name = last_name.upper()
         self.first_name = first_name.title()
 
+    def __repr__(self):
+        return "[" + self.last_name + "," + self.first_name + "]"
+
 class Group:
     # The maximal number of students in a group before
     max_explicit_size = 3
@@ -46,6 +49,9 @@ class Group:
             else:
                 key += s.last_name[0] + s.first_name[0]
         return key
+
+    def __repr__(self):
+        return str(self.students)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
