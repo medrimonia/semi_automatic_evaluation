@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from anytree import NodeMixin, RenderTree
 import json
 import io
@@ -6,6 +8,7 @@ import tarfile
 import subprocess
 import sys
 import traceback
+import abc
 
 from os.path import isfile, join
 
@@ -18,12 +21,14 @@ Examples of generated outputs: TO BE DESCRIBED
 
 Module classes:
 
+- Student: The core properties of a student
+- Group: A simple list of students
+- GroupCollection: A list of student groups
 - Eval: Simple evaluation on an exercise
 - EvalNode: The core element of the evaluation is the node of a tree
   - Can be exported to both, result
-- GroupCollection: A list of student groups
-- Assignment: The results of all the group on a specific task, this is the
-  class that should be inherited from when creating an assignment
+- EvaluationProcess: This is the class that should be inherited from when creating an assignment
+- Assignment: The results of all the group on a specific assignment.
   - Results can be exported as json files or csv files
 - TeachingUnit: A class allowing to regroup multiples assignment and to produce
   a recap for all the students
@@ -79,16 +84,23 @@ class Eval:
         The maximal number of points that can be obtained on the exercise
     msg: str
         The name of the exercise
+    evaluated: bool
+        Has the node already been evaluated or has it just been created
+    eval_func: lambda
+        An evaluation function which returns a value in [0,1] corresponding to
+        the ratio of points obtained
     """
-    def __init__(self, points = 0, max_points = 1, msg=""):
-        self.points = points
+    def __init__(self, max_points = 1.0, points = 0, msg="", eval_func = None, evaluated = False):
         self.max_points = max_points
+        self.points = points
         self.msg = msg
+        self.evaluated = evaluated
+        self.eval_func = eval_func
 
 class EvalNode(Eval, NodeMixin):
-    def __init__(self, name, points = 0, max_points=1, msg="", parent=None, children=None):
+    def __init__(self, name, max_points=1.0,points = 0,  msg="", parent=None, children=None):
         super().__init__()
-        Eval.__init__(self, points, max_points, msg)
+        Eval.__init__(self, max_points, points, msg)
         self.name = name
         self.parent = parent
         if children:
@@ -202,6 +214,75 @@ class GroupCollection(list):
                     print("Failed to extract archive in '" + a + "': " + str(error))
         return group_collection
 
+class EvaluationProcess:
+    def __init__(self):
+        pass
+
+    def run(self, group, original_eval = None):
+        """
+        Run a complete evaluation for the given group
+
+        Parameters
+        ----------
+        group : Group
+            The group which will be evaluated
+        original_eval : EvalNode
+            The root of a previous evaluation. If provided, the evaluation is
+            simply resumed
+        """
+        pass
+
+    @abc.abstractmethod
+    def getStructure(self):
+        """
+        Return the evaluation tree prior to any evaluation
+        """
+
+    def getDefaultRulesTree(self):
+        """
+        Return a tree for evaluation regarding respect of the rules
+        """
+        rules_root = EvalNode("rules", children = [
+            EvalNode("Mail title", 1.0, eval_func = manualEval)
+        ])
+        # Mail: Title
+        # Mail: Archive
+        # Archive: valid name
+        # Archive: valid content
+
+    def extractArchive(self, group):
+        """
+        Extract the content of the archive from the provided group
+
+        Returns
+        -------
+        res : None or str
+            Returns None if extraction was successful, otherwise return a error message
+        """
+        pass
+
+    def setUp(self):
+        """
+        Perform tasks which needs to be run prior to evaluation, once
+
+        Returns
+        -------
+        res : None or str
+            Returns None if setUp was successful, otherwise return a error message
+        """
+        return None
+
+    def tearDown(self):
+        """
+        Cleans the environment after an evaluation has been performed
+
+        Returns
+        -------
+        res : None or str
+            Returns None if tearDown was successful, otherwise return a error message
+        """
+        return None
+
 class Assignment:
     """
     Members
@@ -216,6 +297,8 @@ class Assignment:
         self.groups = GroupCollection()
         self.evaluations = {}
         #TODO shuffle for evaluation
+
+
 
 
 def evalToString(eval_root):
@@ -281,6 +364,15 @@ def askFloat(msg):
         except ValueError as e:
             print("Not a valid number " + str(e))
 
+def manualEval():
+    result = prompt("\ty(es), n(o), p(artially)", ['y','n','p'])
+    if (result == 'y'):
+        node.points = node.max_points
+    else:
+        if (result == 'p'):
+            node.points = askFloat("How many points? (max_points={:})".format(node.max_points))
+        node.msg = freeTextQuestion("What is the problem?")
+
 def checkNode(node):
     result = prompt("Is: '{:}' ok? (y(es), n(o), p(artially)".format(node.name), ['y','n','p'])
     if (result == 'y'):
@@ -307,4 +399,6 @@ if __name__ == "__main__":
     parser.add_argument("path", help="The path to the directory")
     args = parser.parse_args()
 
-    print(GroupCollection.discover(args.path))
+    os.chdir(args.path)
+
+    print(GroupCollection.discover("./"))
