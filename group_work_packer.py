@@ -11,6 +11,8 @@ import os
 import tarfile
 import sys
 
+from terminal_utils import prompt
+
 class Student:
     def __init__(self, last_name="LastName", first_name = "FirstName"):
         self.last_name = last_name.upper()
@@ -68,7 +70,7 @@ class Group:
         msg = "Failed to find file with default name, is one of the following file valid?\n"
         msg += "Default name was: " + str(candidate) + "\n"
         msg += "-> answer 'n' if no file is valid\n"
-        file_options = [f for f in os.listdir(path) if f.endsWith(extension)]
+        file_options = [f for f in os.listdir(path) if f.endswith(extension)]
         options = []
         for i in range(len(file_options)):
             msg += "{:2d}: {:}\n".format(i, file_options[i])

@@ -13,6 +13,7 @@ import abc
 from os.path import isfile, join
 
 from group_work_packer import *
+from terminal_utils import *
 
 """
 Documentation in progress...
@@ -71,6 +72,16 @@ def getMessage(id):
     if SAE_LG not in messages[id]:
         return "<UNSUPPORTED LANGUAGE '{:}' for message id '{:}'>".format(SAE_LG, id)
     return messages[id][SAE_LG]
+
+def tarOpenUTF8Proof(path):
+    """
+    Open a utf8 file and returns the associated tarfile.TarFile while
+    supporting utf8 encoding in paths
+    """
+    # from: https://issue.life/questions/57723988
+    with open(path, 'rb') as f:
+        return tarfile.open(fileobj=io.BytesIO(f.read()),mode='r')
+
 
 class Eval:
     """
@@ -207,11 +218,8 @@ class GroupCollection(list):
         group_collection = GroupCollection()
         for a in archives:
             group_name = a.replace(".tar.gz", "")
-            # Handling utf-8 enconding in paths:
-            # from: https://issue.life/questions/57723988
-            with open(join(path,a), 'rb') as f:
-                try:
-                    tar = tarfile.open(fileobj=io.BytesIO(f.read()),mode='r')
+            try:
+                with tarOpenUTF8Proof(join(path,a)) as tar:
                     group_inner_path = join(group_name, "group.csv")
                     with tar.extractfile(group_inner_path) as group_file:
                         if group_file is None:
@@ -221,12 +229,12 @@ class GroupCollection(list):
                         else:
                             reader = csv.DictReader(io.StringIO(group_file.read().decode('utf-8')),
                                                     fieldnames=["LastName","FirstName"])
-                            group = Group()
+                            students = []
                             for row in reader:
-                                group.students.append(Student(row["LastName"],row["FirstName"]))
-                            group_collection.append(group)
-                except tarfile.ReadError as error:
-                    print("Failed to extract archive in '" + a + "': " + str(error))
+                                students.append(Student(row["LastName"],row["FirstName"]))
+                            group_collection.append(Group(students))
+            except tarfile.ReadError as error:
+                print("Failed to extract archive in '" + a + "': " + str(error))
         return group_collection
 
 class EvaluationProcess:
@@ -247,9 +255,9 @@ class EvaluationProcess:
             TODO If provided, the evaluation is simply resumed
         """
         print("Running evaluation for group:")
-        self.__archive_path = group.findArchive(path, ".tar.gz")
         for s in group.students:
             print("->" + s.last_name + ", " + s.first_name)
+        self.__archive_path = group.findArchive(path, ".tar.gz")
         root = self.getStructure()
         root.eval()
         root.syncPoints()
@@ -270,9 +278,9 @@ class EvaluationProcess:
             EvalNode("Mail recipients", 1.0, eval_func = manualEval),
             EvalNode("Archive name", 1.0, eval_func = manualEval,
                      set_up_func= lambda : print("Archive name: " + self.__archive_path)),
-            EvalNode("Useful content", 1.0, eval_func = manualEval)
+            EvalNode("Useful content", 1.0, eval_func = manualEval,
+                     set_up_func= lambda : tarOpenUTF8Proof(self.__archive_path).list())
         ])
-        #TODO Only useful content: list archive content
         return rules_root
 
 
@@ -355,40 +363,6 @@ def evalToString(eval_root):
         result_txt += "*{:}: {:}\n".format(idx+1, oversized_messages[idx])
     return result_txt
 
-def prompt(msg, options):
-    """
-    Send a message to the user and wait for him to choose among the given options"""
-    while True:
-        print(msg)
-        print(" ", end='')
-        print("> ", end='')
-        sys.stdout.flush()
-        answer = sys.stdin.readline().strip().lower()
-        if answer in options:
-            return answer
-        print("You should answer one of the following: {:}".format(options))
-
-def question(text):
-    """
-    Ask a 'yes' or 'no' question to the user and returns true if answer was yes
-    """
-    return prompt(text, ['y','n']) == 'y'
-
-def freeTextQuestion(msg):
-    print(msg)
-    print("> ", end='')
-    sys.stdout.flush()
-    return sys.stdin.readline().strip()
-
-def askFloat(msg):
-    print(msg)
-    while True:
-        print("> ", end='')
-        sys.stdout.flush()
-        try:
-            return float(sys.stdin.readline().strip().lower())
-        except ValueError as e:
-            print("Not a valid number " + str(e))
 
 def manualEval(node):
     result = prompt("Is '{:}' valid? y(es), n(o), p(artially)".format(node.name), ['y','n','p'])
