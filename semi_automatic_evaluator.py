@@ -258,10 +258,18 @@ class EvaluationProcess:
         for s in group.students:
             print("->" + s.last_name + ", " + s.first_name)
         self.__archive_path = group.findArchive(path, ".tar.gz")
-        root = self.getStructure()
-        root.eval()
-        root.syncPoints()
-        return root
+        self.root = self.getStructure()
+        try:
+            self._set_up()
+        except Exception as exc:
+            print ("Failed to set up environment with the following error:")
+            print(exc)
+            if not question("Would you like to proceed with evaluation?"):
+                return self.root
+        self._eval()
+        self._tear_down()
+        self.root.syncPoints()
+        return self.root
 
     @abc.abstractmethod
     def getStructure(self):
@@ -283,37 +291,26 @@ class EvaluationProcess:
         ])
         return rules_root
 
-
-    def extractArchive(self, group):
+    def _set_up(self):
         """
-        Extract the content of the archive from the provided group
-
-        Returns
-        -------
-        res : None or str
-            Returns None if extraction was successful, otherwise return a error message
+        Perform tasks which needs to be run prior to evaluation, default is
+        extracting archive in its own folder
         """
-        pass
-
-    def setUp(self):
-        """
-        Perform tasks which needs to be run prior to evaluation, once
-
-        Returns
-        -------
-        res : None or str
-            Returns None if setUp was successful, otherwise return a error message
-        """
+        dst = os.path.dirname(self.__archive_path)
+        with  tarOpenUTF8Proof(self.__archive_path) as tar:
+            tar.extractall(dst)
         return None
 
-    def tearDown(self):
+    def _eval(self):
+        """
+        Run the evaluation process, default is to launch eval procedure on the
+        whole tree
+        """
+        self.root.eval()
+
+    def _tear_down(self):
         """
         Cleans the environment after an evaluation has been performed
-
-        Returns
-        -------
-        res : None or str
-            Returns None if tearDown was successful, otherwise return a error message
         """
         return None
 
