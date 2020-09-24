@@ -90,22 +90,24 @@ class Eval:
         An evaluation function which updates the node points and the node
         message
     """
-    def __init__(self, max_points = 1.0, points = 0, msg="", eval_func = None, evaluated = False):
+    def __init__(self, max_points = 1.0, points = 0, msg="", evaluated = False):
         self.max_points = max_points
         self.points = points
         self.msg = msg
         self.evaluated = evaluated
-        self.eval_func = eval_func
 
 
 class EvalNode(Eval, NodeMixin):
     def __init__(self, name, max_points=1.0,points = 0,  msg="",
-                 eval_func = None, evaluated = False, parent=None,
-                 children=None):
+                 eval_func = None, set_up_func = None, tear_down_func = None,
+                 evaluated = False, parent=None, children=None):
         super().__init__()
-        Eval.__init__(self, max_points, points, msg, eval_func, evaluated)
+        Eval.__init__(self, max_points, points, msg, evaluated)
         self.name = name
         self.parent = parent
+        self.eval_func = eval_func
+        self.set_up_func = set_up_func
+        self.tear_down_func = tear_down_func
         if children is not None:
             self.children = children
         self.syncPoints()
@@ -140,11 +142,14 @@ class EvalNode(Eval, NodeMixin):
             self.setMessageRecursive("Failed to build")
 
     def eval(self):
-        print("Evaluating node: " + self.name + " with eval_func: " + str(self.eval_func))
+        if self.set_up_func is not None:
+            self.set_up_func()
         for c in self.children:
             c.eval()
         if self.eval_func is not None:
             self.eval_func(self)
+        if self.tear_down_func is not None:
+            self.tear_down_func()
 
 class GroupCollection(list):
     def __init__(self):
@@ -226,9 +231,10 @@ class GroupCollection(list):
 
 class EvaluationProcess:
     def __init__(self):
+        self.__archive_path = None
         pass
 
-    def run(self, group, original_eval = None):
+    def run(self, path, group, original_eval = None):
         """
         Run a complete evaluation for the given group
 
@@ -237,10 +243,17 @@ class EvaluationProcess:
         group : Group
             The group which will be evaluated
         original_eval : EvalNode
-            The root of a previous evaluation. If provided, the evaluation is
-            simply resumed
+            The root of a previous evaluation.
+            TODO If provided, the evaluation is simply resumed
         """
-        pass
+        print("Running evaluation for group:")
+        self.__archive_path = group.findArchive(path, ".tar.gz")
+        for s in group.students:
+            print("->" + s.last_name + ", " + s.first_name)
+        root = self.getStructure()
+        root.eval()
+        root.syncPoints()
+        return root
 
     @abc.abstractmethod
     def getStructure(self):
@@ -255,10 +268,13 @@ class EvaluationProcess:
         rules_root = EvalNode("Rules", children = [
             EvalNode("Mail title", 1.0, eval_func = manualEval),
             EvalNode("Mail recipients", 1.0, eval_func = manualEval),
-            EvalNode("Valid archive name", 1.0, eval_func = manualEval),
-            EvalNode("Only useful content", 1.0, eval_func = manualEval)
+            EvalNode("Archive name", 1.0, eval_func = manualEval,
+                     set_up_func= lambda : print("Archive name: " + self.__archive_path)),
+            EvalNode("Useful content", 1.0, eval_func = manualEval)
         ])
+        #TODO Only useful content: list archive content
         return rules_root
+
 
     def extractArchive(self, group):
         """
@@ -375,16 +391,7 @@ def askFloat(msg):
             print("Not a valid number " + str(e))
 
 def manualEval(node):
-    result = prompt("\ty(es), n(o), p(artially)", ['y','n','p'])
-    if (result == 'y'):
-        node.points = node.max_points
-    else:
-        if (result == 'p'):
-            node.points = askFloat("How many points? (max_points={:})".format(node.max_points))
-        node.msg = freeTextQuestion("What is the problem?")
-
-def checkNode(node):
-    result = prompt("Is: '{:}' ok? (y(es), n(o), p(artially)".format(node.name), ['y','n','p'])
+    result = prompt("Is '{:}' valid? y(es), n(o), p(artially)".format(node.name), ['y','n','p'])
     if (result == 'y'):
         node.points = node.max_points
     else:

@@ -50,6 +50,36 @@ class Group:
                 key += s.last_name[0] + s.first_name[0]
         return key
 
+    def findArchive(self, path, extension):
+        """
+        Return: archive_path
+
+        Perform the following operation:
+        1. Test if there is an archive with a valid name in folder 'path'
+        2. If no available names are found, list all the archive files and
+           request user choice to see if it's valid
+        3. If user chooses an archive name manually, it asks if the name is
+           valid
+        """
+        key = self.getKey()
+        candidate = os.path.join(path,key + extension)
+        if os.path.exists(candidate):
+                return candidate
+        msg = "Failed to find file with default name, is one of the following file valid?\n"
+        msg += "Default name was: " + str(candidate) + "\n"
+        msg += "-> answer 'n' if no file is valid\n"
+        file_options = [f for f in os.listdir(path) if f.endsWith(extension)]
+        options = []
+        for i in range(len(file_options)):
+            msg += "{:2d}: {:}\n".format(i, file_options[i])
+            options += [str(i)]
+        choice = prompt(msg, options + ["n"])
+        if choice == "n":
+            return  None
+        choice_idx = int(choice)
+        archive_path = file_options[choice_idx]
+        return archive_path
+
     def __repr__(self):
         return str(self.students)
 
