@@ -238,27 +238,34 @@ class GroupCollection(list):
         return group_collection
 
 class EvaluationProcess:
-    def __init__(self):
-        self.__archive_path = None
-        pass
+    def __init__(self, path, group):
+        """
+        Parameters
+        ----------
+        path : str
+            The path to the assignment directory
+        group : Group
+            The group which will be evaluated
+        """
+        self._archive_path = None
+        self._path = path
+        self._group = group
+        self.root = self.getStructure()
 
-    def run(self, path, group, original_eval = None):
+    def run(self, original_eval = None):
         """
         Run a complete evaluation for the given group
 
         Parameters
         ----------
-        group : Group
-            The group which will be evaluated
         original_eval : EvalNode
             The root of a previous evaluation.
             TODO If provided, the evaluation is simply resumed
         """
         print("Running evaluation for group:")
-        for s in group.students:
+        for s in self._group.students:
             print("->" + s.last_name + ", " + s.first_name)
-        self.__archive_path = group.findArchive(path, ".tar.gz")
-        self.root = self.getStructure()
+        self._archive_path = self._group.findArchive(self._path, ".tar.gz")
         try:
             self._set_up()
         except Exception as exc:
@@ -285,9 +292,9 @@ class EvaluationProcess:
             EvalNode("Mail title", 1.0, eval_func = manualEval),
             EvalNode("Mail recipients", 1.0, eval_func = manualEval),
             EvalNode("Archive name", 1.0, eval_func = manualEval,
-                     set_up_func= lambda : print("Archive name: " + self.__archive_path)),
+                     set_up_func= lambda : print("Archive name: " + self._archive_path)),
             EvalNode("Useful content", 1.0, eval_func = manualEval,
-                     set_up_func= lambda : tarOpenUTF8Proof(self.__archive_path).list())
+                     set_up_func= lambda : tarOpenUTF8Proof(self._archive_path).list())
         ])
         return rules_root
 
@@ -296,8 +303,8 @@ class EvaluationProcess:
         Perform tasks which needs to be run prior to evaluation, default is
         extracting archive in its own folder
         """
-        dst = os.path.dirname(self.__archive_path)
-        with  tarOpenUTF8Proof(self.__archive_path) as tar:
+        dst = os.path.dirname(self._archive_path)
+        with  tarOpenUTF8Proof(self._archive_path) as tar:
             tar.extractall(dst)
         return None
 

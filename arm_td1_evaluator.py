@@ -7,14 +7,23 @@ from os.path import join, dirname
 import semi_automatic_evaluator as sae
 
 class DicomDiscoveryAssignment(sae.EvaluationProcess):
-    def __init__(self):
-        pass
+    def __init__(self, path, group):
+        super().__init__(path, group)
 
     def _eval(self):
         super()._eval()
-        # current_dir = os.getcwd()
-        # group_path = os.path.join(os.path.dirname(self.__archive_path), self.
-        # os.chdir()
+        current_dir = os.getcwd()
+        group_path = os.path.join(os.path.dirname(self.__archive_path), self._group.getKey())
+        os.chdir(group_path)
+        os.mkdir("build")
+        os.chdir("build")
+        status, out, err = sae.systemCall("qmake --qt=qt5 .. && make")
+        os.chdir(current_dir)
+        if (status != 0):
+            print("Failed to build project with the following error:\n{:}".format(err))
+            if not sae.question("Can you build it manually?"):
+                sae.setRecursiveMessage("Failed to build")
+
 
     def getStructure(self):
         return sae.EvalNode("TD Dicom Discovery", children=[
@@ -60,6 +69,6 @@ if __name__ == "__main__":
     groups = sae.GroupCollection.discover(args.path)
 
     for g in groups:
-        dicom_eval = DicomDiscoveryAssignment()
-        root = dicom_eval.run(args.path, g)
+        dicom_eval = DicomDiscoveryAssignment(args.path, g)
+        root = dicom_eval.run()
         print(sae.evalToString(root))
