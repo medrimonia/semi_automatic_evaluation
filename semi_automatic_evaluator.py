@@ -86,9 +86,9 @@ class Eval:
         The name of the exercise
     evaluated: bool
         Has the node already been evaluated or has it just been created
-    eval_func: lambda
-        An evaluation function which returns a value in [0,1] corresponding to
-        the ratio of points obtained
+    eval_func: lambda EvalNode : None
+        An evaluation function which updates the node points and the node
+        message
     """
     def __init__(self, max_points = 1.0, points = 0, msg="", eval_func = None, evaluated = False):
         self.max_points = max_points
@@ -97,13 +97,16 @@ class Eval:
         self.evaluated = evaluated
         self.eval_func = eval_func
 
+
 class EvalNode(Eval, NodeMixin):
-    def __init__(self, name, max_points=1.0,points = 0,  msg="", parent=None, children=None):
+    def __init__(self, name, max_points=1.0,points = 0,  msg="",
+                 eval_func = None, evaluated = False, parent=None,
+                 children=None):
         super().__init__()
-        Eval.__init__(self, max_points, points, msg)
+        Eval.__init__(self, max_points, points, msg, eval_func, evaluated)
         self.name = name
         self.parent = parent
-        if children:
+        if children is not None:
             self.children = children
         self.syncPoints()
 
@@ -135,6 +138,13 @@ class EvalNode(Eval, NodeMixin):
             self.checkRecursive()
         else:
             self.setMessageRecursive("Failed to build")
+
+    def eval(self):
+        print("Evaluating node: " + self.name + " with eval_func: " + str(self.eval_func))
+        for c in self.children:
+            c.eval()
+        if self.eval_func is not None:
+            self.eval_func(self)
 
 class GroupCollection(list):
     def __init__(self):
@@ -242,13 +252,13 @@ class EvaluationProcess:
         """
         Return a tree for evaluation regarding respect of the rules
         """
-        rules_root = EvalNode("rules", children = [
-            EvalNode("Mail title", 1.0, eval_func = manualEval)
+        rules_root = EvalNode("Rules", children = [
+            EvalNode("Mail title", 1.0, eval_func = manualEval),
+            EvalNode("Mail recipients", 1.0, eval_func = manualEval),
+            EvalNode("Valid archive name", 1.0, eval_func = manualEval),
+            EvalNode("Only useful content", 1.0, eval_func = manualEval)
         ])
-        # Mail: Title
-        # Mail: Archive
-        # Archive: valid name
-        # Archive: valid content
+        return rules_root
 
     def extractArchive(self, group):
         """
@@ -364,7 +374,7 @@ def askFloat(msg):
         except ValueError as e:
             print("Not a valid number " + str(e))
 
-def manualEval():
+def manualEval(node):
     result = prompt("\ty(es), n(o), p(artially)", ['y','n','p'])
     if (result == 'y'):
         node.points = node.max_points
