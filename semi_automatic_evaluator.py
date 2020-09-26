@@ -63,7 +63,27 @@ messages= {
     "SEE": {
         "EG" : "See",
         "FR" : "Voir"
-    }
+    },
+    "RULES_NODE": {
+        "EG" : "Rules",
+        "FR" : "Règles"
+    },
+    "MAIL_TITLE_NODE": {
+        "EG" : "Mail title",
+        "FR" : "Titre du mail"
+    },
+    "MAIL_CC_NODE": {
+        "EG" : "Mail recipients",
+        "FR" : "Destinataires du mail"
+    },
+    "ARCHIVE_NAME_NODE": {
+        "EG" : "Archive name",
+        "FR" : "Nom de l'archive"
+    },
+    "ARCHIVE_CONTENT_NODE": {
+        "EG" : "Archive content",
+        "FR" : "Contenu de l'archive"
+    },
 }
 
 def getMessage(id):
@@ -153,6 +173,8 @@ class EvalNode(Eval, NodeMixin):
             self.setMessageRecursive("Failed to build")
 
     def eval(self):
+        if self.evaluated:
+            return
         if self.set_up_func is not None:
             self.set_up_func()
         for c in self.children:
@@ -288,12 +310,12 @@ class EvaluationProcess:
         """
         Return a tree for evaluation regarding respect of the rules
         """
-        rules_root = EvalNode("Rules", children = [
-            EvalNode("Mail title", 1.0, eval_func = manualEval),
-            EvalNode("Mail recipients", 1.0, eval_func = manualEval),
-            EvalNode("Archive name", 1.0, eval_func = manualEval,
+        rules_root = EvalNode(getMessage("RULES_NODE"), children = [
+            EvalNode(getMessage("MAIL_TITLE_NODE"), 1.0, eval_func = manualEval),
+            EvalNode(getMessage("MAIL_CC_NODE"), 1.0, eval_func = manualEval),
+            EvalNode(getMessage("ARCHIVE_NAME_NODE"), 1.0, eval_func = manualEval,
                      set_up_func= lambda : print("Archive name: " + self._archive_path)),
-            EvalNode("Useful content", 1.0, eval_func = manualEval,
+            EvalNode(getMessage("ARCHIVE_CONTENT_NODE"), 1.0, eval_func = manualEval,
                      set_up_func= lambda : tarOpenUTF8Proof(self._archive_path).list())
         ])
         return rules_root
@@ -376,10 +398,16 @@ def manualEval(node):
         if (result == 'p'):
             node.points = askFloat("How many points? (max_points={:})".format(node.max_points))
         node.msg = freeTextQuestion("What is the problem?")
+    node.evaluated = True
 
-def setRecursiveMessage(node, msg):
+def setRecursive(node, msg = None, points_ratio = None, evaluated = None):
     for children in self.result.descendants:
-        children.msg = msg
+        if msg is not None:
+            children.msg = msg
+        if points_ratio is not None:
+            children.points = children.max_points * points_ratio
+        if evaluated is not None:
+            children.evaluated = True
 
 def systemCall(cmd):
     proc = subprocess.Popen(cmd, stdout = subprocess.PIPE, stderr= subprocess.PIPE, shell=True)
