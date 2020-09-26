@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from anytree import NodeMixin, RenderTree
+from anytree.exporter import DictExporter, JsonExporter
 import json
 import io
 import os
@@ -161,6 +162,14 @@ class EvalNode(Eval, NodeMixin):
         for node in self.descendants:
             node.msg = msg
 
+    def exportToJson(self, json_path):
+        # Filtering all the lambda function attributes out of the export
+        dict_exporter = DictExporter(attriter=lambda attrs: [(k, v) for k, v in attrs if k.find("func") == -1])
+        exporter = JsonExporter(dict_exporter, indent=2,sort_keys = False)
+        with open(json_path, "w") as f:
+            exporter.write(self,f)
+
+
     def checkRecursive(self):
         for node in self.descendants:
             if node.is_leaf:
@@ -183,6 +192,21 @@ class EvalNode(Eval, NodeMixin):
             self.eval_func(self)
         if self.tear_down_func is not None:
             self.tear_down_func()
+
+    def importContent(self, src):
+        """
+        Import all the evaluation content from 'src' to current node.
+        """
+        if len(self.children) != len(src.children):
+            raise RuntimeError("Src has not the same number of children")
+        for i in range(len(self.children)):
+            if (self.children[i].name != src.children[i].name):
+                raise RuntimeError("Src has not the same structure")
+            self.children[i].importContent(src.children[i])
+        self.points = src.points
+        self.max_points = src.max_points
+        self.msg = src.msg
+        self.evaluated = src.evaluated
 
 class GroupCollection(list):
     def __init__(self):
@@ -283,10 +307,17 @@ class EvaluationProcess:
         original_eval : EvalNode
             The root of a previous evaluation.
             TODO If provided, the evaluation is simply resumed
+
+        Returns
+        -------
+        root : EvalNode
+            The evaluation tree after evaluation
         """
         print("Running evaluation for group:")
         for s in self._group.students:
             print("->" + s.last_name + ", " + s.first_name)
+        if original_eval is not None:
+            self.root.importContent(original_eval)
         self._archive_path = self._group.findArchive(self._path, ".tar.gz")
         try:
             self._set_up()
@@ -360,7 +391,6 @@ class Assignment:
 
 
 
-
 def evalToString(eval_root):
     """
     Convert evaluation to a printable version
@@ -401,6 +431,7 @@ def manualEval(node):
     node.evaluated = True
 
 def setRecursive(node, msg = None, points_ratio = None, evaluated = None):
+    #TODO replace by the function in 'EvalNode'
     for children in self.result.descendants:
         if msg is not None:
             children.msg = msg

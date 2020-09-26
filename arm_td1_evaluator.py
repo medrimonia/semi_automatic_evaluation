@@ -3,6 +3,7 @@
 import argparse
 import os
 from os.path import join, dirname
+from anytree.importer import JsonImporter
 
 import semi_automatic_evaluator as sae
 
@@ -83,9 +84,20 @@ if __name__ == "__main__":
     parser.add_argument("path", help="The path to the directory")
     args = parser.parse_args()
 
-    groups = sae.GroupCollection.discover(args.path)
 
+    groups = sae.GroupCollection.discover(args.path)
     for g in groups:
+        json_path = join(args.path, g.getKey() + ".json")
+        original_evaluation = None
+        if os.path.isfile(json_path):
+            print("Importing existing evaluation for the group: " + g.getKey())
+            with open(json_path, 'r') as f:
+                original_evaluation = JsonImporter().read(f)
         dicom_eval = DicomDiscoveryAssignment(args.path, g)
-        root = dicom_eval.run()
-        print(sae.evalToString(root))
+        root = dicom_eval.run(original_evaluation)
+        root.exportToJson(json_path)
+        txt_content = sae.evalToString(root)
+        txt_path = join(args.path, g.getKey() + ".txt")
+        with open(txt_path, "w") as f:
+            f.write(txt_content)
+        print(txt_content)
