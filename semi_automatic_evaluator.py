@@ -157,10 +157,14 @@ class EvalNode(Eval, NodeMixin):
     def setSuccess(self, successRatio=1.0):
         self.points = successRatio * self.max_points
 
-    def setMessageRecursive(self, msg):
-        self.msg = msg
-        for node in self.descendants:
-            node.msg = msg
+    def setRecursive(self, msg = None, points_ratio = None, evaluated = None):
+        for children in self.descendants:
+            if msg is not None:
+                children.msg = msg
+            if points_ratio is not None:
+                children.points = children.max_points * points_ratio
+            if evaluated is not None:
+                children.evaluated = True
 
     def exportToJson(self, json_path):
         # Filtering all the lambda function attributes out of the export
@@ -430,15 +434,6 @@ def manualEval(node):
         node.msg = freeTextQuestion("What is the problem?")
     node.evaluated = True
 
-def setRecursive(node, msg = None, points_ratio = None, evaluated = None):
-    #TODO replace by the function in 'EvalNode'
-    for children in self.result.descendants:
-        if msg is not None:
-            children.msg = msg
-        if points_ratio is not None:
-            children.points = children.max_points * points_ratio
-        if evaluated is not None:
-            children.evaluated = True
 
 def systemCall(cmd):
     proc = subprocess.Popen(cmd, stdout = subprocess.PIPE, stderr= subprocess.PIPE, shell=True)
