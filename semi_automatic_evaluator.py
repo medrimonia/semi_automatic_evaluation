@@ -15,6 +15,7 @@ from os.path import isfile, join
 
 from group_work_packer import *
 from terminal_utils import *
+from textwrap import TextWrapper
 
 """
 Documentation in progress...
@@ -420,7 +421,12 @@ def evalToString(eval_root):
                 oversized_messages.append(node.msg)
         result_txt += line + "\n"
     for idx in range(len(oversized_messages)):
-        result_txt += "*{:}: {:}\n".format(idx+1, oversized_messages[idx])
+        wrapper = TextWrapper(initial_indent="*{:}: ".format(idx+1),
+                              subsequent_indent="    ",
+                              width=80)
+        first_line = True
+        for line in wrapper.wrap(oversized_messages[idx]):
+            result_txt += "{:}\n".format(line)
     return result_txt
 
 
