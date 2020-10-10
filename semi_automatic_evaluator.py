@@ -115,6 +115,9 @@ class Eval:
         The number of points achieved on the exercise
     max_points: float
         The maximal number of points that can be obtained on the exercise
+    adjustment_points: float
+        A manual adjustment of the points for the node, can be used for bonus
+        valid over a subtree
     msg: str
         The name of the exercise
     evaluated: bool
@@ -126,6 +129,7 @@ class Eval:
     def __init__(self, max_points = 1.0, points = 0, msg="", evaluated = False):
         self.max_points = max_points
         self.points = points
+        self.adjustment_points = 0.0
         self.msg = msg
         self.evaluated = evaluated
 
@@ -148,7 +152,7 @@ class EvalNode(Eval, NodeMixin):
     def syncPoints(self):
         if len(self.children) == 0:
             return
-        self.points = 0
+        self.points = self.adjustment_points
         self.max_points = 0
         for c in self.children:
             c.syncPoints();
@@ -169,7 +173,10 @@ class EvalNode(Eval, NodeMixin):
 
     def exportToJson(self, json_path):
         # Filtering all the lambda function attributes out of the export
-        dict_exporter = DictExporter(attriter=lambda attrs: [(k, v) for k, v in attrs if k.find("func") == -1])
+        dict_exporter = DictExporter(
+            attriter=lambda attrs: [
+                (k, v) for k, v in attrs if k.find("func") == -1 and (k != "adjustment_points" or v != 0)
+            ])
         exporter = JsonExporter(dict_exporter, indent=2,sort_keys = False)
         with open(json_path, "w") as f:
             exporter.write(self,f)
@@ -209,6 +216,8 @@ class EvalNode(Eval, NodeMixin):
                 raise RuntimeError("Src has not the same structure")
             self.children[i].importContent(src.children[i])
         self.points = src.points
+        if hasattr(src, "adjustment_points"):
+            self.adjustment_points = src.adjustment_points
         self.max_points = src.max_points
         self.msg = src.msg
         self.evaluated = src.evaluated
