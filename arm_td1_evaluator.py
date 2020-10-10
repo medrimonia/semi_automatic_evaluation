@@ -26,8 +26,8 @@ class DicomDiscoveryAssignment(sae.EvaluationProcess):
         if (status != 0):
             print("Failed to build project with the following error:\n{:}".format(err))
             if not sae.question("Can you build it manually?"):
-                for i in range(1,4):
-                    sae.setRecursive(self.root.children[i], "Failed to build", 0.0, True)
+                for i in range(1,len(self.root.children)):
+                    self.root.children[i].setRecursive("Failed to build", 0.0, True)
                 return
         binary_path = join(join(group_path, "build"), "dicom_viewer")
         print("Launch binary " + binary_path)
