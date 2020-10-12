@@ -430,12 +430,21 @@ def evalToString(eval_root):
                 oversized_messages.append(node.msg)
         result_txt += line + "\n"
     for idx in range(len(oversized_messages)):
-        wrapper = TextWrapper(initial_indent="*{:}: ".format(idx+1),
-                              subsequent_indent="    ",
-                              width=80)
-        first_line = True
-        for line in wrapper.wrap(oversized_messages[idx]):
-            result_txt += "{:}\n".format(line)
+        msg = oversized_messages[idx]
+        first_paragraph = True
+        default_indent = "    "
+        for paragraph in msg.split('\n'):
+            if paragraph == "":
+                continue
+            init_indent = default_indent
+            if first_paragraph:
+                init_indent = "*{:}: ".format(idx+1)
+                first_paragraph = False
+            wrapper = TextWrapper(initial_indent=init_indent,
+                                  subsequent_indent=default_indent,
+                                  width=80)
+            for line in wrapper.wrap(paragraph):
+                result_txt += "{:}\n".format(line)
     return result_txt
 
 
@@ -449,6 +458,28 @@ def manualEval(node):
         node.msg = freeTextQuestion("What is the problem?")
     node.evaluated = True
 
+def assertionEval(node, func, header=None, show_assert=True):
+    """
+    Parameters
+    ----------
+    node : EvalNode
+        The node to be evaluated
+    func : lambda
+        The test function to run
+    header : str or None
+        The header to add to node.msg if test fails
+    show_assert : boolean
+        When enabled, display AssertionError message in node.msg
+    """
+    try:
+        func()
+        node.points = node.max_points
+    except AssertionError as e:
+        if header is not None:
+            node.msg += "# {:}\n".format(header)
+        if show_assert:
+            for msg in e.args:
+                node.msg += msg
 
 def systemCall(cmd):
     proc = subprocess.Popen(cmd, stdout = subprocess.PIPE, stderr= subprocess.PIPE, shell=True)
