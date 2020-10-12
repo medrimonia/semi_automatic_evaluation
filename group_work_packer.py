@@ -15,8 +15,8 @@ from terminal_utils import prompt
 
 class Student:
     def __init__(self, last_name="LastName", first_name = "FirstName"):
-        self.last_name = last_name.upper()
-        self.first_name = first_name.title()
+        self.last_name = last_name.strip().upper()
+        self.first_name = first_name.strip().title()
 
     def __repr__(self):
         return "[" + self.last_name + "," + self.first_name + "]"
