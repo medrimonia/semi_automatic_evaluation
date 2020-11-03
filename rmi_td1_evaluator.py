@@ -10,28 +10,44 @@ import semi_automatic_evaluator as sae
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
+from importlib import reload, import_module
+
 rtol = 1e-6
 atol = 1e-6
+
+ht_module = None
+ctrl_module = None
 
 class MGDAssignment(sae.EvaluationProcess):
     def __init__(self, path, group):
         super().__init__(path, group)
 
     def _eval(self):
+        global ht_module, ctrl_module
         # Eval rules respect even if modules are not found
-        # self.root.children[0].eval()
+        self.root.children[0].eval()
         current_dir = os.getcwd()
         assignment_dir = join(current_dir,dirname(self._archive_path))
         group_key = self._group.getKey()
-        group_path = os.path.join(os.path.dirname(self._archive_path), group_key)
-        sys.path.append(join(current_dir, group_path))
-        self.ht_module = __import__("homogeneous_transform")
-        self.rot_x = getattr(self.ht_module, "rot_x")
-        self.rot_y = getattr(self.ht_module, "rot_y")
-        self.rot_z = getattr(self.ht_module, "rot_z")
-        self.translation = getattr(self.ht_module, "translation")
-        self.invert_transform = getattr(self.ht_module, "invert_transform")
-        self.get_quat = getattr(self.ht_module, "get_quat")
+        self.group_path = os.path.join(os.path.dirname(self._archive_path), group_key)
+        sys.path.append(join(current_dir, self.group_path))
+        if ht_module is not None:
+            ht_module = reload(ht_module)
+            ctrl_module = reload(ctrl_module)
+        else:
+            ht_module = import_module("homogeneous_transform")
+            ctrl_module = import_module("control")
+        sys.path.pop()
+        print(ht_module)
+        print(ctrl_module)
+        self.rot_x = getattr(ht_module, "rot_x")
+        self.rot_y = getattr(ht_module, "rot_y")
+        self.rot_z = getattr(ht_module, "rot_z")
+        self.translation = getattr(ht_module, "translation")
+        self.invert_transform = getattr(ht_module, "invert_transform")
+        self.get_quat = getattr(ht_module, "get_quat")
+        self.rt_robot = getattr(ctrl_module, "RTRobot")
+        self.rrr_robot = getattr(ctrl_module, "RRRRobot")
         for c in self.root.children[1:]:
             print("Evaluating: " + c.name)
             c.eval()
@@ -39,7 +55,11 @@ class MGDAssignment(sae.EvaluationProcess):
     def getStructure(self):
         return sae.EvalNode("1-MGD Assignment", children=[
             self.getDefaultRulesTree(),
-            self.getHTTree()
+            self.getHTTree(),
+            self.getRobotTree("RT"),
+            self.getRobotTree("RRR"),
+            self.getToolsTree(),
+            sae.EvalNode("Compte rendu", eval_func=sae.manualEval, max_points=2)
             ])
 
     def getHTTree(self):
@@ -51,6 +71,31 @@ class MGDAssignment(sae.EvaluationProcess):
             self.getInvertTransformTree(),
             self.getGetQuatTree()
         ])
+
+    def getRobotTree(self, robot_name):
+        return sae.EvalNode("Robot {:}".format(robot_name),
+                            set_up_func= lambda : print(
+                                "From {:}, run './simulation --robot {:}'".format(
+                                    self.group_path, robot_name)
+                            ),
+                            children=[
+                                sae.EvalNode("Tool position",
+                                             eval_func=sae.manualEval),
+                                sae.EvalNode("Tool orientation",
+                                             eval_func=sae.manualEval),
+                                sae.EvalNode("MGD",
+                                             eval_func=lambda node : sae.assertionEval(node,
+                                                                                       lambda :
+                                                                                       self.test_mgd(robot_name)))
+                            ])
+
+    def getToolsTree(self):
+        return sae.EvalNode("Tools", children=[
+            sae.EvalNode("DebugLine", eval_func=sae.manualEval,
+                         set_up_func=lambda : print("If memory is not limited, half points.")),
+            sae.EvalNode("Log joints measured", eval_func=sae.manualEval),
+            sae.EvalNode("Log operational pos", eval_func=sae.manualEval)
+            ])
 
     def getRotXTree(self):
         return sae.EvalNode("rot_x", children=[
@@ -216,6 +261,30 @@ class MGDAssignment(sae.EvaluationProcess):
         expected = get_quat(T)
         np.testing.assert_allclose(received, expected, rtol, atol)
 
+    def test_mgd(self, robot_name):
+        if robot_name == "RRR":
+            self.test_mgd_rrr()
+        elif robot_name == "RT":
+            self.test_mgd_rt()
+
+    def test_mgd_rt(self):
+        robot = self.rt_robot()
+        joints = [np.pi/2,0.1]
+        print("Testing rt with joints:")
+        print(joints)
+        received = robot.computeMGD(joints)
+        expected = np.array([0.25,0.3])
+        np.testing.assert_allclose(received, expected, rtol, atol)
+
+    def test_mgd_rrr(self):
+        robot = self.rrr_robot()
+        joints = np.array([np.pi/2,np.pi/2,-np.pi/2])
+        print("Testing rrr with joints:")
+        print(joints)
+        received = robot.computeMGD(joints)
+        expected = np.array([-0.71,0.0,1.31])
+        np.testing.assert_allclose(received, expected, rtol, atol)
+
 # IMPLEMENTING DEFAULT VERSION TO TEST BEHAVIORS
 # ----------------------------------------------
 
@@ -230,7 +299,6 @@ def rot_x(alpha):
                      [0, s, c, 0],
                      [0, 0, 0, 1]], dtype=np.double)
 
-
 def rot_y(alpha):
     """Return the 4x4 homogeneous transform corresponding to a rotation of
     alpha around y
@@ -242,7 +310,6 @@ def rot_y(alpha):
                      [-s, 0, c, 0],
                      [0, 0, 0, 1]], dtype=np.double)
 
-
 def rot_z(alpha):
     """Return the 4x4 homogeneous transform corresponding to a rotation of
     alpha around z
@@ -253,7 +320,6 @@ def rot_z(alpha):
                      [s, c, 0, 0],
                      [0, 0, 1, 0],
                      [0, 0, 0, 1]], dtype=np.double)
-
 
 def translation(vec):
     """Return the 4x4 homogeneous transform corresponding to a translation of
@@ -298,9 +364,9 @@ if __name__ == "__main__":
                 original_evaluation = JsonImporter().read(f)
         dicom_eval = MGDAssignment(args.path, g)
         root = dicom_eval.run(original_evaluation)
-        # root.exportToJson(json_path)
+        root.exportToJson(json_path)
         txt_content = sae.evalToString(root)
-        # txt_path = join(args.path, g.getKey() + ".txt")
-        # with open(txt_path, "w") as f:
-        #     f.write(txt_content)
+        txt_path = join(args.path, g.getKey() + ".txt")
+        with open(txt_path, "w") as f:
+            f.write(txt_content)
         print(txt_content)

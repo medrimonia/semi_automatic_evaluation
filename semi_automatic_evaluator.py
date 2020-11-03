@@ -215,12 +215,15 @@ class EvalNode(Eval, NodeMixin):
             if (self.children[i].name != src.children[i].name):
                 raise RuntimeError("Src has not the same structure")
             self.children[i].importContent(src.children[i])
-        self.points = src.points
+        if hasattr(src, "points"):
+            self.points = src.points
         if hasattr(src, "adjustment_points"):
             self.adjustment_points = src.adjustment_points
         self.max_points = src.max_points
-        self.msg = src.msg
-        self.evaluated = src.evaluated
+        if hasattr(src, "msg"):
+            self.msg = src.msg
+        if hasattr(src, "evaluated"):
+            self.evaluated = src.evaluated
 
 class GroupCollection(list):
     def __init__(self):
@@ -474,12 +477,18 @@ def assertionEval(node, func, header=None, show_assert=True):
     try:
         func()
         node.points = node.max_points
-    except AssertionError as e:
+    except Exception as e:
         if header is not None:
             node.msg += "# {:}\n".format(header)
         if show_assert:
             for msg in e.args:
-                node.msg += msg
+                node.msg += str(msg)
+    except:
+        if header is not None:
+            node.msg += "# {:}\n".format(header)
+        node.msg += str(sys.exc_info()[0])
+    finally:
+        node.evaluated = True
 
 def systemCall(cmd):
     proc = subprocess.Popen(cmd, stdout = subprocess.PIPE, stderr= subprocess.PIPE, shell=True)
