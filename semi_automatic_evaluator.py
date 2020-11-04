@@ -481,11 +481,13 @@ def assertionEval(node, func, header=None, show_assert=True):
         if header is not None:
             node.msg += "# {:}\n".format(header)
         if show_assert:
+            node.msg += "{:}: ".format(type(e).__name__)
             for msg in e.args:
                 node.msg += str(msg)
     except:
         if header is not None:
             node.msg += "# {:}\n".format(header)
+        node.msg += "Generic_error: "
         node.msg += str(sys.exc_info()[0])
     finally:
         node.evaluated = True
