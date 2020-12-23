@@ -340,6 +340,88 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
         with np.testing.assert_raises(Exception):
             self.getBadKnotsCubicCustomDerivativeSpline()
 
+    def getDefaultNaturalCubicSpline(self):
+        return self.traj_builder("NaturalCubicSpline", 0.0,
+                                 np.array([[0,2],[1,3],[3,-3]]))
+    def getUnorderedNaturalCubicSpline(self):
+        return self.traj_builder("NaturalCubicSpline", 0.0,
+                                 np.array([[0,2],[3,3],[2,-2]]))
+    def test_NaturalCubicSpline_degree(self):
+        traj = self.getDefaultNaturalCubicSpline()
+        np.testing.assert_equal(3, traj.getDegree())
+
+    def test_NaturalCubicSpline_limits_before(self):
+        traj = self.getDefaultNaturalCubicSpline()
+        np.testing.assert_equal(2, traj.getVal(-1,0))
+        np.testing.assert_equal(0, traj.getVal(-1,1))
+        np.testing.assert_equal(0, traj.getVal(-1,2))
+    def test_NaturalCubicSpline_limits_after(self):
+        traj = self.getDefaultNaturalCubicSpline()
+        np.testing.assert_equal(-3, traj.getVal(4,0))
+        np.testing.assert_equal( 0, traj.getVal(4,1))
+        np.testing.assert_equal( 0, traj.getVal(4,2))
+    def test_NaturalCubicSpline_position_controlPoints(self):
+        traj = self.getDefaultNaturalCubicSpline()
+        np.testing.assert_allclose( 2, traj.getVal(0), rtol, atol)
+        np.testing.assert_allclose( 3, traj.getVal(1), rtol, atol)
+        np.testing.assert_allclose(-3, traj.getVal(3), rtol, atol)
+    def test_NaturalCubicSpline_position_intermediary(self):
+        traj = self.getDefaultNaturalCubicSpline()
+        np.testing.assert_allclose(2.75, traj.getVal(0.5), rtol, atol)
+        np.testing.assert_allclose(1.00, traj.getVal(2.0), rtol, atol)
+    def test_NaturalCubicSpline_vel(self):
+        traj = self.getDefaultNaturalCubicSpline()
+        np.testing.assert_allclose( 1.542, traj.getVal(0.25, 1), rtol, atol)
+        np.testing.assert_allclose(-4.083, traj.getVal(2.50, 1), rtol, atol)
+    def test_NaturalCubicSpline_acc_border(self):
+        traj = self.getDefaultNaturalCubicSpline()
+        np.testing.assert_allclose(0, traj.getVal(0.0, 2), rtol, atol)
+        np.testing.assert_allclose(0, traj.getVal(3.0, 2), rtol, atol)
+    def test_NaturalCubicSpline_acc_intermediary(self):
+        traj = self.getDefaultNaturalCubicSpline()
+        np.testing.assert_allclose(-2.0, traj.getVal(0.5, 2), rtol, atol)
+        np.testing.assert_allclose(-0.6, traj.getVal(2.7, 2), rtol, atol)
+    def test_NaturalCubicSpline_invalid_unorderedPoints(self):
+        with np.testing.assert_raises(Exception):
+            self.getUnorderedNaturalCubicSpline()
+    def getDefaultPeriodicCubicSpline(self):
+        return self.traj_builder("PeriodicCubicSpline", 0.0,
+                                 np.array([[0,2],[1,3],[3,-3],[5,2]]))
+    def getBadLimitsPeriodicCubicSpline(self):
+        return self.traj_builder("PeriodicCubicSpline", 0.0,
+                                 np.array([[0,2],[3,3],[2,-2]]))
+    def test_PeriodicCubicSpline_degree(self):
+        traj = self.getDefaultPeriodicCubicSpline()
+        np.testing.assert_equal(3, traj.getDegree())
+    def test_PeriodicCubicSpline_position_controlPoints(self):
+        traj = self.getDefaultPeriodicCubicSpline()
+        np.testing.assert_allclose( 2, traj.getVal(0), rtol, atol)
+        np.testing.assert_allclose( 3, traj.getVal(1), rtol, atol)
+        np.testing.assert_allclose(-3, traj.getVal(3), rtol, atol)
+        np.testing.assert_allclose( 2, traj.getVal(5), rtol, atol)
+        np.testing.assert_allclose( 3, traj.getVal(6), rtol, atol)
+        np.testing.assert_allclose(-3, traj.getVal(8), rtol, atol)
+    def test_PeriodicCubicSpline_position_intermediary(self):
+        traj = self.getDefaultPeriodicCubicSpline()
+        np.testing.assert_allclose( 3.016, traj.getVal(0.5), rtol, atol)
+        np.testing.assert_allclose(-0.141, traj.getVal(2.0), rtol, atol)
+        np.testing.assert_allclose( 3.016, traj.getVal(5.5), rtol, atol)
+        np.testing.assert_allclose(-0.141, traj.getVal(7.0), rtol, atol)
+    def test_PeriodicCubicSpline_vel(self):
+        traj = self.getDefaultPeriodicCubicSpline()
+        np.testing.assert_allclose( 2.063, traj.getVal(0.25, 1), rtol, atol)
+        np.testing.assert_allclose(-3.105, traj.getVal(2.50, 1), rtol, atol)
+        np.testing.assert_allclose( 2.063, traj.getVal(5.25, 1), rtol, atol)
+        np.testing.assert_allclose(-3.105, traj.getVal(7.50, 1), rtol, atol)
+    def test_PeriodicCubicSpline_acc(self):
+        traj = self.getDefaultPeriodicCubicSpline()
+        np.testing.assert_allclose(-4.125, traj.getVal( 0.5, 2), rtol, atol)
+        np.testing.assert_allclose( 4.416, traj.getVal( 2.7, 2), rtol, atol)
+        np.testing.assert_allclose(-4.125, traj.getVal(10.5, 2), rtol, atol)
+        np.testing.assert_allclose( 4.416, traj.getVal(12.7, 2), rtol, atol)
+    def test_PeriodicCubicSpline_invalid_badLimits(self):
+        with np.testing.assert_raises(Exception):
+            self.getBadLimitsPeriodicCubicSpline()
 if __name__ == "__main__":
     sae.SAE_LG = "FR"
     #TODO a generic parser should be moved to SAE, then methods would only be
