@@ -22,6 +22,18 @@ ht_module = None
 ctrl_module = None
 traj_module = None
 
+# With a constant spacing of 2 and cubic zero derivative, we can easily obtain
+# values at middle of two nodes
+# - pos(1) = (pos(2) + pos(0))
+# - vel(1) = 3a+2b = b = 3*(x_end-s_src)/4
+# - acc(1) = 6a+2b = 0
+# - acc(0) = 2b = 6*(x_end-x_src) / 4
+#
+# Solving systems can be done easily manually:
+#   - d = x_src
+#   - c = 0
+#   - 8a + 4b + d = x_end   -> -4a = (x_end - d) -> a = (d-xend) / 4
+#   - 12a + 4b = 0  -> b = -3a  -> b = 3*(x_end - d) /4
 rrr_targets = np.array([[0,0.8,0.0,1.05],[2,0.0,0.8,1.05],[4,0.0,0.8,0.65]])
 dt = 1e-3
 
@@ -68,7 +80,7 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
         self.robot_traj_builder = getattr(traj_module, "RobotTrajectory")
         self.rrr_model = getattr(ctrl_module, "RRRRobot")()
         print(self.traj_builder)
-        for c in self.root.children[1:]:
+        for c in self.root.children[1:3]:
             print("Evaluating: " + c.name)
             c.eval()
 
@@ -76,8 +88,8 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
         return sae.EvalNode("3-Trajectoires", children=[
             self.getDefaultRulesTree(),
             self.get1DTrajectoriesTree(),
-            self.getRobotTrajectoriesTree()
-            # sae.EvalNode("Compte rendu", eval_func=sae.manualEval, max_points=3)
+            self.getRobotTrajectoriesTree(),
+            sae.EvalNode("Compte rendu", eval_func=sae.manualEval, max_points=3)
             ])
 
     def get1DTrajectoriesTree(self):
@@ -262,12 +274,12 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
         np.testing.assert_equal(-1.50, traj.getVal(2.50, 0))
     def test_LinearSpline_vel(self):
         traj = self.getDefaultLinearSpline()
-        np.testing.assert_equal( 1, traj.getVal(0.33, 1))
-        np.testing.assert_equal(-3, traj.getVal(1.53, 1))
+        np.testing.assert_allclose( 1, traj.getVal(0.33, 1), rtol, atol)
+        np.testing.assert_allclose(-3, traj.getVal(1.53, 1), rtol, atol)
     def test_LinearSpline_acc(self):
         traj = self.getDefaultLinearSpline()
-        np.testing.assert_equal(0, traj.getVal(0.33, 2))
-        np.testing.assert_equal(0, traj.getVal(1.53, 2))
+        np.testing.assert_allclose(0, traj.getVal(0.33, 2), rtol, atol)
+        np.testing.assert_allclose(0, traj.getVal(1.53, 2), rtol, atol)
     def test_LinearSpline_invalid_unorderedPoints(self):
         with np.testing.assert_raises(Exception):
             self.getUnorderedLinearSpline()
@@ -294,13 +306,13 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
         np.testing.assert_equal( 0, traj.getVal(4,2))
     def test_CubicZeroDerivativeSpline_position_controlPoints(self):
         traj = self.getDefaultCubicZeroDerivativeSpline()
-        np.testing.assert_equal( 2, traj.getVal(0))
-        np.testing.assert_equal( 3, traj.getVal(1))
-        np.testing.assert_equal(-3, traj.getVal(3))
+        np.testing.assert_equal( 2, traj.getVal(0,0))
+        np.testing.assert_equal( 3, traj.getVal(1,0))
+        np.testing.assert_equal(-3, traj.getVal(3,0))
     def test_CubicZeroDerivativeSpline_position_intermediary(self):
         traj = self.getDefaultCubicZeroDerivativeSpline()
-        np.testing.assert_allclose( 2.5, traj.getVal(0.5), rtol, atol)
-        np.testing.assert_allclose( 0.0, traj.getVal(2.0), rtol, atol)
+        np.testing.assert_allclose( 2.5, traj.getVal(0.5,0), rtol, atol)
+        np.testing.assert_allclose( 0.0, traj.getVal(2.0,0), rtol, atol)
     def test_CubicZeroDerivativeSpline_vel_controlPoints(self):
         traj = self.getDefaultCubicZeroDerivativeSpline()
         np.testing.assert_allclose(0, traj.getVal(0, 1), rtol, atol)
@@ -340,11 +352,11 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
         np.testing.assert_equal( 0, traj.getVal(6,2))
     def test_CubicWideStencilSpline_position_controlPoints(self):
         traj = self.getDefaultCubicWideStencilSpline()
-        np.testing.assert_allclose( 2, traj.getVal(0), rtol, atol)
-        np.testing.assert_allclose( 3, traj.getVal(1), rtol, atol)
-        np.testing.assert_allclose( 1, traj.getVal(2), rtol, atol)
-        np.testing.assert_allclose(-3, traj.getVal(3), rtol, atol)
-        np.testing.assert_allclose(-2, traj.getVal(5), rtol, atol)
+        np.testing.assert_allclose( 2, traj.getVal(0,0), rtol, atol)
+        np.testing.assert_allclose( 3, traj.getVal(1,0), rtol, atol)
+        np.testing.assert_allclose( 1, traj.getVal(2,0), rtol, atol)
+        np.testing.assert_allclose(-3, traj.getVal(3,0), rtol, atol)
+        np.testing.assert_allclose(-2, traj.getVal(5,0), rtol, atol)
     def test_CubicWideStencilSpline_position_intermediary(self):
         traj = self.getDefaultCubicWideStencilSpline()
         np.testing.assert_allclose( 2.9375, traj.getVal(0.5, 0), rtol, atol)
@@ -382,13 +394,13 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
         np.testing.assert_equal( 0, traj.getVal(4,2))
     def test_CubicCustomDerivativeSpline_position_controlPoints(self):
         traj = self.getDefaultCubicCustomDerivativeSpline()
-        np.testing.assert_equal( 2, traj.getVal(0))
-        np.testing.assert_equal( 3, traj.getVal(1))
-        np.testing.assert_equal(-3, traj.getVal(3))
+        np.testing.assert_equal( 2, traj.getVal(0,0))
+        np.testing.assert_equal( 3, traj.getVal(1,0))
+        np.testing.assert_equal(-3, traj.getVal(3,0))
     def test_CubicCustomDerivativeSpline_position_intermediary(self):
         traj = self.getDefaultCubicCustomDerivativeSpline()
-        np.testing.assert_allclose( 2.75, traj.getVal(0.5), rtol, atol)
-        np.testing.assert_allclose(-0.25, traj.getVal(2.0), rtol, atol)
+        np.testing.assert_allclose( 2.75, traj.getVal(0.5,0), rtol, atol)
+        np.testing.assert_allclose(-0.25, traj.getVal(2.0,0), rtol, atol)
     def test_CubicCustomDerivativeSpline_vel_controlPoints(self):
         traj = self.getDefaultCubicCustomDerivativeSpline()
         np.testing.assert_allclose( 1, traj.getVal(0, 1), rtol, atol)
@@ -429,13 +441,13 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
         np.testing.assert_equal( 0, traj.getVal(4,2))
     def test_NaturalCubicSpline_position_controlPoints(self):
         traj = self.getDefaultNaturalCubicSpline()
-        np.testing.assert_allclose( 2, traj.getVal(0), rtol, atol)
-        np.testing.assert_allclose( 3, traj.getVal(1), rtol, atol)
-        np.testing.assert_allclose(-3, traj.getVal(3), rtol, atol)
+        np.testing.assert_allclose( 2, traj.getVal(0,0), rtol, atol)
+        np.testing.assert_allclose( 3, traj.getVal(1,0), rtol, atol)
+        np.testing.assert_allclose(-3, traj.getVal(3,0), rtol, atol)
     def test_NaturalCubicSpline_position_intermediary(self):
         traj = self.getDefaultNaturalCubicSpline()
-        np.testing.assert_allclose(2.75, traj.getVal(0.5), rtol, atol)
-        np.testing.assert_allclose(1.00, traj.getVal(2.0), rtol, atol)
+        np.testing.assert_allclose(2.75, traj.getVal(0.5,0), rtol, atol)
+        np.testing.assert_allclose(1.00, traj.getVal(2.0,0), rtol, atol)
     def test_NaturalCubicSpline_vel(self):
         traj = self.getDefaultNaturalCubicSpline()
         np.testing.assert_allclose( 1.542, traj.getVal(0.25, 1), rtol, atol)
@@ -462,18 +474,18 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
         np.testing.assert_equal(3, traj.getDegree())
     def test_PeriodicCubicSpline_position_controlPoints(self):
         traj = self.getDefaultPeriodicCubicSpline()
-        np.testing.assert_allclose( 2, traj.getVal(0), rtol, atol)
-        np.testing.assert_allclose( 3, traj.getVal(1), rtol, atol)
-        np.testing.assert_allclose(-3, traj.getVal(3), rtol, atol)
-        np.testing.assert_allclose( 2, traj.getVal(5), rtol, atol)
-        np.testing.assert_allclose( 3, traj.getVal(6), rtol, atol)
-        np.testing.assert_allclose(-3, traj.getVal(8), rtol, atol)
+        np.testing.assert_allclose( 2, traj.getVal(0,0), rtol, atol)
+        np.testing.assert_allclose( 3, traj.getVal(1,0), rtol, atol)
+        np.testing.assert_allclose(-3, traj.getVal(3,0), rtol, atol)
+        np.testing.assert_allclose( 2, traj.getVal(5,0), rtol, atol)
+        np.testing.assert_allclose( 3, traj.getVal(6,0), rtol, atol)
+        np.testing.assert_allclose(-3, traj.getVal(8,0), rtol, atol)
     def test_PeriodicCubicSpline_position_intermediary(self):
         traj = self.getDefaultPeriodicCubicSpline()
-        np.testing.assert_allclose( 3.016, traj.getVal(0.5), rtol, atol)
-        np.testing.assert_allclose(-0.141, traj.getVal(2.0), rtol, atol)
-        np.testing.assert_allclose( 3.016, traj.getVal(5.5), rtol, atol)
-        np.testing.assert_allclose(-0.141, traj.getVal(7.0), rtol, atol)
+        np.testing.assert_allclose( 3.016, traj.getVal(0.5,0), rtol, atol)
+        np.testing.assert_allclose(-0.141, traj.getVal(2.0,0), rtol, atol)
+        np.testing.assert_allclose( 3.016, traj.getVal(5.5,0), rtol, atol)
+        np.testing.assert_allclose(-0.141, traj.getVal(7.0,0), rtol, atol)
     def test_PeriodicCubicSpline_vel(self):
         traj = self.getDefaultPeriodicCubicSpline()
         np.testing.assert_allclose( 2.063, traj.getVal(0.25, 1), rtol, atol)
@@ -614,6 +626,16 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
             joint_pos = traj.getJointTarget(t)
             op_pos = self.rrr_model.computeMGD(joint_pos)
             np.testing.assert_allclose(exp_op, op_pos, rtol, atol)
+        # Testing that intermediary pos is in middle of prev and next
+        # (planification in joint space)
+        for idx in range(rrr_targets.shape[0]-1):
+            prevT = rrr_targets[idx,0]
+            nextT = rrr_targets[idx+1,0]
+            prevJoint = traj.getJointTarget(prevT)
+            nextJoint = traj.getJointTarget(nextT)
+            exp_pos = (nextJoint+prevJoint) / 2
+            joint_pos = traj.getJointTarget((prevT+nextT)/2)
+            np.testing.assert_allclose(exp_pos, joint_pos, rtol, atol)
     def test_RRRCubic0DJoint_opPos(self):
         traj = self.getRRRCubic0DJointTrajectory()
         for idx in range(rrr_targets.shape[0]):
@@ -621,8 +643,35 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
             exp_op = rrr_targets[idx,1:]
             op_pos = traj.getOperationalTarget(t)
             np.testing.assert_allclose(exp_op, op_pos, rtol, atol)
+        # Testing that intermediary pos is in middle of prev and next
+        # (planification in joint space)
+        for idx in range(rrr_targets.shape[0]-1):
+            prevT = rrr_targets[idx,0]
+            nextT = rrr_targets[idx+1,0]
+            prevJoint = traj.getJointTarget(prevT)
+            nextJoint = traj.getJointTarget(nextT)
+            exp_pos = self.rrr_model.computeMGD((nextJoint+prevJoint) / 2)
+            joint_pos = traj.getOperationalTarget((prevT+nextT)/2)
+            np.testing.assert_allclose(exp_pos, joint_pos, rtol, atol)
     def test_RRRCubic0DJoint_jointVel(self):
         traj = self.getRRRCubic0DJointTrajectory()
+        # Checking that on all control points, speed is 0
+        for idx in range(rrr_targets.shape[0]):
+            t = rrr_targets[idx,0]
+            exp_vel = np.zeros(3)
+            vel = traj.getJointVelocity(t)
+            np.testing.assert_allclose(exp_vel, vel, rtol, atol)
+        # Checking values at the middle of each target
+        for idx in range(rrr_targets.shape[0]-1):
+            prevT = rrr_targets[idx,0]
+            nextT = rrr_targets[idx+1,0]
+            prevJoint = traj.getJointTarget(prevT)
+            nextJoint = traj.getJointTarget(nextT)
+            t = (rrr_targets[idx+1,0] + rrr_targets[idx,0]) / 2
+            exp_vel = 3*(nextJoint - prevJoint)/4
+            vel = traj.getJointVelocity(t)
+            np.testing.assert_allclose(exp_vel, vel, rtol, atol)
+        # Checking consistency
         start = 1.8
         end = 2.2
         joint_pos = traj.getJointTarget(start)
@@ -632,6 +681,13 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
             joint_pos += dt * traj.getJointVelocity(t)
     def test_RRRCubic0DJoint_opVel(self):
         traj = self.getRRRCubic0DJointTrajectory()
+        # Checking that on all control points, speed is 0
+        for idx in range(rrr_targets.shape[0]):
+            t = rrr_targets[idx,0]
+            exp_vel = np.zeros(3)
+            vel = traj.getOperationalVelocity(t)
+            np.testing.assert_allclose(exp_vel, vel, rtol, atol)
+        # Checking consistency
         start = 1.8
         end = 2.2
         op_pos = traj.getOperationalTarget(start)
@@ -650,6 +706,17 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
             joint_vel += dt * getJointAcc(traj, t)
     def test_RRRCubic0DJoint_opAcc(self):
         traj = self.getRRRCubic0DJointTrajectory()
+        # Checking that at start, acceleration is what we expect
+        # v ~= 0 -> simplification, \dot{J} \dot{q} disappear
+        start_t = 1e-8#Taking minimum value to avoid risk of confusion with<=
+        q = traj.getJointTarget(start_t)
+        q_end = traj.getJointTarget(2.0)
+        exp_q_acc = 6 * (q_end-q)/4
+        exp_J = self.rrr_model.computeJacobian(q)
+        exp_op_acc = exp_J @ exp_q_acc
+        op_acc = getOpAcc(traj,start_t)
+        np.testing.assert_allclose(exp_op_acc, op_acc, rtol, atol)
+        # Checking consistency
         start = 1.8
         end = 2.2
         op_vel = traj.getOperationalVelocity(start)
@@ -676,10 +743,23 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
             exp_op = rrr_targets[idx,1:]
             op_pos = traj.getOperationalTarget(t)
             np.testing.assert_allclose(exp_op, op_pos, rtol, atol)
+        # Testing that intermediary pos is in middle of op space
+        for idx in range(rrr_targets.shape[0]-1):
+            t = (rrr_targets[idx,0] + rrr_targets[idx+1,0]) / 2
+            exp_op = (rrr_targets[idx,1:] + rrr_targets[idx+1,1:])/2
+            op_pos = traj.getOperationalTarget(t)
+            np.testing.assert_allclose(exp_op, op_pos, rtol, atol)
     def test_RRRCubic0DOperational_jointVel(self):
         traj = self.getRRRCubic0DOperationalTrajectory()
-        start = 1.8
-        end = 2.2
+        # Checking that on all control points, speed is 0
+        for idx in range(rrr_targets.shape[0]):
+            t = rrr_targets[idx,0]
+            exp_vel = np.zeros(3)
+            vel = traj.getJointVelocity(t)
+            np.testing.assert_allclose(exp_vel, vel, rtol, atol)
+        # Checking consistency
+        start = 1.5
+        end = 2.5
         joint_pos = traj.getJointTarget(start)
         for t in np.arange(start,end,dt):
             exp_joint_pos = traj.getJointTarget(t)
@@ -687,6 +767,20 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
             joint_pos += dt * traj.getJointVelocity(t)
     def test_RRRCubic0DOperational_opVel(self):
         traj = self.getRRRCubic0DOperationalTrajectory()
+        traj = self.getRRRCubic0DOperationalTrajectory()
+        # Checking that on all control points, speed is 0
+        for idx in range(rrr_targets.shape[0]):
+            t = rrr_targets[idx,0]
+            exp_vel = np.zeros(3)
+            vel = traj.getOperationalVelocity(t)
+            np.testing.assert_allclose(exp_vel, vel, rtol, atol)
+        # Checking values at the middle of each target
+        for idx in range(rrr_targets.shape[0]-1):
+            t = (rrr_targets[idx+1,0] + rrr_targets[idx,0]) / 2
+            exp_vel = 3*(rrr_targets[idx+1,1:]- rrr_targets[idx,1:])/4
+            vel = traj.getOperationalVelocity(t)
+            np.testing.assert_allclose(exp_vel, vel, rtol, atol)
+        # Checking consistency
         start = 1.8
         end = 2.2
         op_pos = traj.getOperationalTarget(start)

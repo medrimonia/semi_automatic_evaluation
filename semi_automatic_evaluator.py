@@ -481,9 +481,10 @@ def assertionEval(node, func, header=None, show_assert=True):
         if header is not None:
             node.msg += "# {:}\n".format(header)
         if show_assert:
-            node.msg += "{:}: ".format(type(e).__name__)
-            for msg in e.args:
-                node.msg += str(msg)
+            # node.msg += "{:}: ".format(type(e).__name__)
+            # for msg in e.args:
+            #     node.msg += str(msg)
+            node.msg += traceback.format_exc()
     except:
         if header is not None:
             node.msg += "# {:}\n".format(header)
