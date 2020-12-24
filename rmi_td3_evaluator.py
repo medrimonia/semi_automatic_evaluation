@@ -109,15 +109,15 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
         }
         coeff = 1
         if traj_name == "TrapezoidalVelocity":
-            coeff *= 4
+            coeff *= 3
         for test_name, method_name in dic.items():
             pattern = "test_{:}_{:}".format(traj_name, method_name)
             methods = [m for m in dir(self) if pattern in m]
             if (len(methods) == 0):
                 continue
-            test_points = 0.2 * coeff
+            test_points = 0.1 * coeff
             if test_name in ["Position", "Vitesse", "Accélération"] :
-                test_points = 0.3 * coeff
+                test_points = 0.2 * coeff
             if len(methods) == 1:
                 sae.EvalNode(test_name,
                              eval_func = lambda node, func=getattr(self,methods[0]) : sae.assertionEval(
@@ -159,7 +159,7 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
         for test_name, method_name in dic.items():
             pattern = "test_{:}_{:}".format(traj_name, method_name)
             methods = [m for m in dir(self) if pattern in m]
-            test_points = 1.0
+            test_points = 0.75
             if len(methods) == 0:
                 continue
             if len(methods) == 1:
