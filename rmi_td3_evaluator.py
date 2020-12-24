@@ -22,6 +22,23 @@ ht_module = None
 ctrl_module = None
 traj_module = None
 
+rrr_targets = np.array([[0,0.8,0.0,1.05],[2,0.0,0.8,1.05],[4,0.0,0.8,0.65]])
+dt = 1e-3
+
+def getJointAcc(traj, t):
+    # Initial version of trajectory did not contain JointAcceleration
+    joint_acc = np.zeros(3)
+    for i in range(3):
+        joint_acc[i] = traj.getVal(t, i, 2, "joint")
+    return joint_acc
+
+def getOpAcc(traj, t):
+    # Initial version of trajectory did not contain OperationalAcceleration
+    op_acc = np.zeros(3)
+    for i in range(3):
+        op_acc[i] = traj.getVal(t, i, 2, "operational")
+    return op_acc
+
 class TrajectoriesAssignment(sae.EvaluationProcess):
     def __init__(self, path, group):
         super().__init__(path, group)
@@ -48,6 +65,8 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
         print(ctrl_module)
         print(traj_module)
         self.traj_builder = getattr(traj_module, "buildTrajectory")
+        self.robot_traj_builder = getattr(traj_module, "RobotTrajectory")
+        self.rrr_model = getattr(ctrl_module, "RRRRobot")()
         print(self.traj_builder)
         for c in self.root.children[1:]:
             print("Evaluating: " + c.name)
@@ -56,8 +75,8 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
     def getStructure(self):
         return sae.EvalNode("3-Trajectoires", children=[
             self.getDefaultRulesTree(),
-            self.get1DTrajectoriesTree()
-            # self.getRobotTrajectoriesTree(),
+            self.get1DTrajectoriesTree(),
+            self.getRobotTrajectoriesTree()
             # sae.EvalNode("Compte rendu", eval_func=sae.manualEval, max_points=3)
             ])
 
@@ -72,7 +91,7 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
             "PeriodicCubicSpline",
             "TrapezoidalVelocity"
         ]
-        node = sae.EvalNode("1D Trajectories",
+        node = sae.EvalNode("Trajectoires 1D",
                             children = [self.getTrajectoryTree(traj_name)
                                         for traj_name in trajectories])
         return node
@@ -83,18 +102,66 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
             "Degré" : "degree",
             "Constructeur invalide" : "invalid",
             "Limites" : "limits",
+            "Durée" : "duration",
             "Position" : "position",
             "Vitesse" : "vel",
-            "Acceleration" : "acc"
+            "Accélération" : "acc"
         }
+        coeff = 1
+        if traj_name == "TrapezoidalVelocity":
+            coeff *= 4
         for test_name, method_name in dic.items():
             pattern = "test_{:}_{:}".format(traj_name, method_name)
             methods = [m for m in dir(self) if pattern in m]
             if (len(methods) == 0):
                 continue
-            test_points = 0.2
-            if test_name == "Position" :
-                test_points = 0.5
+            test_points = 0.2 * coeff
+            if test_name in ["Position", "Vitesse", "Accélération"] :
+                test_points = 0.3 * coeff
+            if len(methods) == 1:
+                sae.EvalNode(test_name,
+                             eval_func = lambda node, func=getattr(self,methods[0]) : sae.assertionEval(
+                                 node, func),
+                             max_points = test_points,
+                             parent = traj_node)
+            else:
+                case_points = test_points / len(methods)
+                test_node = sae.EvalNode(test_name, parent=traj_node)
+                for m in methods:
+                    callback = getattr(self,m)
+                    sae.EvalNode(m[m.rfind('_')+1:],
+                                 eval_func = lambda node, func=getattr(self,m) : sae.assertionEval(
+                                     node, func),
+                                 max_points = case_points,
+                                 parent = test_node)
+        return traj_node
+
+    def getRobotTrajectoriesTree(self):
+        trajectories = [
+            "RRRCubic0DJoint",
+            "RRRCubic0DOperational"
+        ]
+        node = sae.EvalNode("Trajectoires pour robots",
+                            children = [self.getRobotTrajectoryTree(traj_name)
+                                        for traj_name in trajectories])
+        return node
+
+    def getRobotTrajectoryTree(self, traj_name):
+        traj_node = sae.EvalNode(traj_name)
+        dic = {
+            "Position articulaire" : "jointPos",
+            "Vitesse articulaire" : "jointVel",
+            "Accélération articulaire" : "jointAcc",
+            "Position opérationnelle" : "opPos",
+            "Vitesse opérationnelle" : "opVel",
+            "Accélération opérationnelle" : "opAcc"
+        }
+        for test_name, method_name in dic.items():
+            pattern = "test_{:}_{:}".format(traj_name, method_name)
+            methods = [m for m in dir(self) if pattern in m]
+            test_points = 1.0
+            if len(methods) == 0:
+                continue
             if len(methods) == 1:
                 sae.EvalNode(test_name,
                              eval_func = lambda node, func=getattr(self,methods[0]) : sae.assertionEval(
@@ -422,6 +489,230 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
     def test_PeriodicCubicSpline_invalid_badLimits(self):
         with np.testing.assert_raises(Exception):
             self.getBadLimitsPeriodicCubicSpline()
+    def get2PointsUpTrapezoidalVelocity(self):
+        # accTime: 0.2
+        # accDist: 0.1
+        # steadyTime: 0.8
+        return self.traj_builder("TrapezoidalVelocity", 0.0,
+                                 np.array([[2],[3]]),
+                                 {"acc_max" : 5.0, "vel_max" : 1.0})
+    def get2PointsDownTrapezoidalVelocity(self):
+        # accTime: 0.2
+        # accDist: -0.1
+        # steadyTime: 1.8
+        return self.traj_builder("TrapezoidalVelocity", 0.0,
+                                 np.array([[3],[1]]),
+                                 {"acc_max" : 5.0, "vel_max" : 1.0})
+    def getNoSteadySpeedTrapezoidalVelocity(self):
+        # accTime: 0.5
+        # accDist: 0.5
+        # steadyTime: 0.0
+        return self.traj_builder("TrapezoidalVelocity", 0.0,
+                                 np.array([[1],[2]]),
+                                 {"acc_max" : 1.0, "vel_max" : 2.0})
+    def get4PointsTrapezoidalVelocity(self):
+        return self.traj_builder("TrapezoidalVelocity", 0.0,
+                                 np.array([[2],[3],[1],[2]]),
+                                 {"acc_max" : 5.0, "vel_max" : 1.0})
+    def getBadKnotsTrapezoidalVelocity(self):
+        return self.traj_builder("TrapezoidalVelocity", 0.0,
+                                 np.array([[0,2],[3,3],[2,-2]]),
+                                 {"acc_max" : 2.0, "vel_max" : 1.0})
+    def getMissingParametersTrapezoidalVelocity(self):
+        return self.traj_builder("TrapezoidalVelocity", 0.0,
+                                 np.array([[0,2],[3,3],[2,-2]]))
+    def test_TrapezoidalVelocity_duration_2pointsUp(self):
+        traj = self.get2PointsUpTrapezoidalVelocity()
+        np.testing.assert_allclose(1.2, traj.getEnd(), rtol, atol)
+    def test_TrapezoidalVelocity_duration_2pointsDown(self):
+        traj = self.get2PointsDownTrapezoidalVelocity()
+        np.testing.assert_allclose(2.2, traj.getEnd(), rtol, atol)
+    def test_TrapezoidalVelocity_duration_NoSteadySpeed(self):
+        traj = self.getNoSteadySpeedTrapezoidalVelocity()
+        np.testing.assert_allclose(2.0, traj.getEnd(), rtol, atol)
+    def test_TrapezoidalVelocity_duration_4points(self):
+        traj = self.get4PointsTrapezoidalVelocity()
+        np.testing.assert_allclose(4.6, traj.getEnd(), rtol, atol)
+    def test_TrapezoidalVelocity_position_2pointsUp(self):
+        traj = self.get2PointsUpTrapezoidalVelocity()
+        np.testing.assert_allclose(2.1, traj.getVal(0.2,0), rtol, atol)
+        np.testing.assert_allclose(2.5, traj.getVal(0.6,0), rtol, atol)
+        np.testing.assert_allclose(2.9, traj.getVal(1.0,0), rtol, atol)
+    def test_TrapezoidalVelocity_position_2pointsDown(self):
+        traj = self.get2PointsDownTrapezoidalVelocity()
+        np.testing.assert_allclose(2.9, traj.getVal(0.2,0), rtol, atol)
+        np.testing.assert_allclose(2.5, traj.getVal(0.6,0), rtol, atol)
+        np.testing.assert_allclose(1.1, traj.getVal(2.0,0), rtol, atol)
+    def test_TrapezoidalVelocity_position_NoSteadySpeed(self):
+        traj = self.getNoSteadySpeedTrapezoidalVelocity()
+        np.testing.assert_allclose(1.005, traj.getVal(0.1,0), rtol, atol)
+        np.testing.assert_allclose(1.50, traj.getVal(1.0,0), rtol, atol)
+        np.testing.assert_allclose(1.995, traj.getVal(1.9,0), rtol, atol)
+    def test_TrapezoidalVelocity_position_4points(self):
+        traj = self.get4PointsTrapezoidalVelocity()
+        np.testing.assert_allclose(2.1, traj.getVal(0.2,0), rtol, atol)
+        np.testing.assert_allclose(2.9, traj.getVal(1.4,0), rtol, atol)
+        np.testing.assert_allclose(1.1, traj.getVal(3.6,0), rtol, atol)
+    def test_TrapezoidalVelocity_vel_2pointsUp(self):
+        traj = self.get2PointsUpTrapezoidalVelocity()
+        np.testing.assert_allclose(0.5, traj.getVal(0.1,1), rtol, atol)
+        np.testing.assert_allclose(1.0, traj.getVal(0.2,1), rtol, atol)
+        np.testing.assert_allclose(1.0, traj.getVal(0.6,1), rtol, atol)
+        np.testing.assert_allclose(0.5, traj.getVal(1.1,1), rtol, atol)
+    def test_TrapezoidalVelocity_vel_2pointsDown(self):
+        traj = self.get2PointsDownTrapezoidalVelocity()
+        np.testing.assert_allclose(-0.5, traj.getVal(0.1,1), rtol, atol)
+        np.testing.assert_allclose(-1.0, traj.getVal(0.2,1), rtol, atol)
+        np.testing.assert_allclose(-1.0, traj.getVal(0.6,1), rtol, atol)
+        np.testing.assert_allclose(-0.5, traj.getVal(2.1,1), rtol, atol)
+    def test_TrapezoidalVelocity_vel_NoSteadySpeed(self):
+        traj = self.getNoSteadySpeedTrapezoidalVelocity()
+        np.testing.assert_allclose(0.2, traj.getVal(0.2,1), rtol, atol)
+        np.testing.assert_allclose(1.0, traj.getVal(1.0,1), rtol, atol)
+        np.testing.assert_allclose(0.3, traj.getVal(1.7,1), rtol, atol)
+    def test_TrapezoidalVelocity_vel_4points(self):
+        traj = self.get4PointsTrapezoidalVelocity()
+        np.testing.assert_allclose( 0.5, traj.getVal(0.1,1), rtol, atol)
+        np.testing.assert_allclose(-0.5, traj.getVal(1.3,1), rtol, atol)
+        np.testing.assert_allclose(-1.0, traj.getVal(1.6,1), rtol, atol)
+        np.testing.assert_allclose( 0.5, traj.getVal(4.5,1), rtol, atol)
+    def test_TrapezoidalVelocity_acc_2pointsUp(self):
+        traj = self.get2PointsUpTrapezoidalVelocity()
+        np.testing.assert_allclose( 5.0, traj.getVal(0.1,2), rtol, atol)
+        np.testing.assert_allclose( 0.0, traj.getVal(0.6,2), rtol, atol)
+        np.testing.assert_allclose(-5.0, traj.getVal(1.1,2), rtol, atol)
+    def test_TrapezoidalVelocity_acc_2pointsDown(self):
+        traj = self.get2PointsDownTrapezoidalVelocity()
+        np.testing.assert_allclose(-5.0, traj.getVal(0.1,2), rtol, atol)
+        np.testing.assert_allclose( 0.0, traj.getVal(0.3,2), rtol, atol)
+        np.testing.assert_allclose( 5.0, traj.getVal(2.1,2), rtol, atol)
+    def test_TrapezoidalVelocity_acc_NoSteadySpeed(self):
+        traj = self.getNoSteadySpeedTrapezoidalVelocity()
+        np.testing.assert_allclose( 1.0, traj.getVal(0.2,2), rtol, atol)
+        np.testing.assert_allclose(-1.0, traj.getVal(1.1,2), rtol, atol)
+    def test_TrapezoidalVelocity_acc_4points(self):
+        traj = self.get4PointsTrapezoidalVelocity()
+        np.testing.assert_allclose( 5.0, traj.getVal(0.1,2), rtol, atol)
+        np.testing.assert_allclose(-5.0, traj.getVal(1.3,2), rtol, atol)
+        np.testing.assert_allclose( 5.0, traj.getVal(3.3,2), rtol, atol)
+        np.testing.assert_allclose( 0.0, traj.getVal(4.2,2), rtol, atol)
+    def test_TrapezoidalVelocity_invalid_badKnots(self):
+        with np.testing.assert_raises(Exception):
+            self.getBadKnotsTrapezoidalVelocity()
+    def test_TrapezoidalVelocity_invalid_missingParameters(self):
+        with np.testing.assert_raises(Exception):
+            self.getMissingParametersTrapezoidalVelocity()
+    def getRRRCubic0DJointTrajectory(self):
+        return self.robot_traj_builder(self.rrr_model, rrr_targets.copy(),
+                                       "CubicZeroDerivativeSpline",
+                                       "operational", "joint")
+    def test_RRRCubic0DJoint_jointPos(self):
+        traj = self.getRRRCubic0DJointTrajectory()
+        for idx in range(rrr_targets.shape[0]):
+            t = rrr_targets[idx,0]
+            exp_op = rrr_targets[idx,1:]
+            joint_pos = traj.getJointTarget(t)
+            op_pos = self.rrr_model.computeMGD(joint_pos)
+            np.testing.assert_allclose(exp_op, op_pos, rtol, atol)
+    def test_RRRCubic0DJoint_opPos(self):
+        traj = self.getRRRCubic0DJointTrajectory()
+        for idx in range(rrr_targets.shape[0]):
+            t = rrr_targets[idx,0]
+            exp_op = rrr_targets[idx,1:]
+            op_pos = traj.getOperationalTarget(t)
+            np.testing.assert_allclose(exp_op, op_pos, rtol, atol)
+    def test_RRRCubic0DJoint_jointVel(self):
+        traj = self.getRRRCubic0DJointTrajectory()
+        start = 1.8
+        end = 2.2
+        joint_pos = traj.getJointTarget(start)
+        for t in np.arange(start,end,dt):
+            exp_joint_pos = traj.getJointTarget(t)
+            np.testing.assert_allclose(exp_joint_pos, joint_pos, rtol, atol)
+            joint_pos += dt * traj.getJointVelocity(t)
+    def test_RRRCubic0DJoint_opVel(self):
+        traj = self.getRRRCubic0DJointTrajectory()
+        start = 1.8
+        end = 2.2
+        op_pos = traj.getOperationalTarget(start)
+        for t in np.arange(start,end,dt):
+            exp_op_pos = traj.getOperationalTarget(t)
+            np.testing.assert_allclose(exp_op_pos, op_pos, rtol, atol)
+            op_pos += dt * traj.getOperationalVelocity(t)
+    def test_RRRCubic0DJoint_jointAcc(self):
+        traj = self.getRRRCubic0DJointTrajectory()
+        start = 1.8
+        end = 2.2
+        joint_vel = traj.getJointVelocity(start)
+        for t in np.arange(start,end,dt):
+            exp_joint_vel = traj.getJointVelocity(t)
+            np.testing.assert_allclose(exp_joint_vel, joint_vel, rtol, atol)
+            joint_vel += dt * getJointAcc(traj, t)
+    def test_RRRCubic0DJoint_opAcc(self):
+        traj = self.getRRRCubic0DJointTrajectory()
+        start = 1.8
+        end = 2.2
+        op_vel = traj.getOperationalVelocity(start)
+        for t in np.arange(start,end,dt):
+            exp_op_vel = traj.getOperationalVelocity(t)
+            np.testing.assert_allclose(exp_op_vel, op_vel, rtol, atol)
+            op_vel += dt * getOpAcc(traj, t)
+    def getRRRCubic0DOperationalTrajectory(self):
+        return self.robot_traj_builder(self.rrr_model, rrr_targets.copy(),
+                                       "CubicZeroDerivativeSpline",
+                                       "operational", "operational")
+    def test_RRRCubic0DOperational_jointPos(self):
+        traj = self.getRRRCubic0DOperationalTrajectory()
+        for idx in range(rrr_targets.shape[0]):
+            t = rrr_targets[idx,0]
+            exp_op = rrr_targets[idx,1:]
+            joint_pos = traj.getJointTarget(t)
+            op_pos = self.rrr_model.computeMGD(joint_pos)
+            np.testing.assert_allclose(exp_op, op_pos, rtol, atol)
+    def test_RRRCubic0DOperational_opPos(self):
+        traj = self.getRRRCubic0DOperationalTrajectory()
+        for idx in range(rrr_targets.shape[0]):
+            t = rrr_targets[idx,0]
+            exp_op = rrr_targets[idx,1:]
+            op_pos = traj.getOperationalTarget(t)
+            np.testing.assert_allclose(exp_op, op_pos, rtol, atol)
+    def test_RRRCubic0DOperational_jointVel(self):
+        traj = self.getRRRCubic0DOperationalTrajectory()
+        start = 1.8
+        end = 2.2
+        joint_pos = traj.getJointTarget(start)
+        for t in np.arange(start,end,dt):
+            exp_joint_pos = traj.getJointTarget(t)
+            np.testing.assert_allclose(exp_joint_pos, joint_pos, rtol, atol)
+            joint_pos += dt * traj.getJointVelocity(t)
+    def test_RRRCubic0DOperational_opVel(self):
+        traj = self.getRRRCubic0DOperationalTrajectory()
+        start = 1.8
+        end = 2.2
+        op_pos = traj.getOperationalTarget(start)
+        for t in np.arange(start,end,dt):
+            exp_op_pos = traj.getOperationalTarget(t)
+            np.testing.assert_allclose(exp_op_pos, op_pos, rtol, atol)
+            op_pos += dt * traj.getOperationalVelocity(t)
+    def test_RRRCubic0DOperational_jointAcc(self):
+        traj = self.getRRRCubic0DOperationalTrajectory()
+        start = 1.8
+        end = 2.2
+        joint_vel = traj.getJointVelocity(start)
+        for t in np.arange(start,end,dt):
+            exp_joint_vel = traj.getJointVelocity(t)
+            np.testing.assert_allclose(exp_joint_vel, joint_vel, rtol, atol)
+            joint_vel += dt * getJointAcc(traj, t)
+    def test_RRRCubic0DOperational_opAcc(self):
+        traj = self.getRRRCubic0DOperationalTrajectory()
+        start = 1.8
+        end = 2.2
+        op_vel = traj.getOperationalVelocity(start)
+        for t in np.arange(start,end,dt):
+            exp_op_vel = traj.getOperationalVelocity(t)
+            np.testing.assert_allclose(exp_op_vel, op_vel, rtol, atol)
+            op_vel += dt * getOpAcc(traj, t)
+
 if __name__ == "__main__":
     sae.SAE_LG = "FR"
     #TODO a generic parser should be moved to SAE, then methods would only be
