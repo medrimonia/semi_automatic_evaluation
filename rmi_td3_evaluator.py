@@ -58,7 +58,7 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
     def _eval(self):
         global ht_module, ctrl_module, traj_module
         # Eval rules respect even if modules are not found
-        # self.root.children[0].eval()
+        self.root.children[0].eval()
         current_dir = os.getcwd()
         assignment_dir = join(current_dir,dirname(self._archive_path))
         group_key = self._group.getKey()
@@ -80,7 +80,7 @@ class TrajectoriesAssignment(sae.EvaluationProcess):
         self.robot_traj_builder = getattr(traj_module, "RobotTrajectory")
         self.rrr_model = getattr(ctrl_module, "RRRRobot")()
         print(self.traj_builder)
-        for c in self.root.children[1:3]:
+        for c in self.root.children[1:]:
             print("Evaluating: " + c.name)
             c.eval()
 
@@ -820,10 +820,10 @@ if __name__ == "__main__":
     for g in groups:
         json_path = join(args.path, g.getKey() + ".json")
         original_evaluation = None
-        # if os.path.isfile(json_path):
-        #     print("Importing existing evaluation for the group: " + g.getKey())
-        #     with open(json_path, 'r') as f:
-        #         original_evaluation = JsonImporter().read(f)
+        if os.path.isfile(json_path):
+            print("Importing existing evaluation for the group: " + g.getKey())
+            with open(json_path, 'r') as f:
+                original_evaluation = JsonImporter().read(f)
         dicom_eval = TrajectoriesAssignment(args.path, g)
         root = dicom_eval.run(original_evaluation)
         root.exportToJson(json_path)
