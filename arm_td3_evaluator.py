@@ -111,7 +111,7 @@ if __name__ == "__main__":
             print("Importing existing evaluation for the group: " + g.getKey())
             with open(json_path, 'r') as f:
                 original_evaluation = JsonImporter().read(f)
-        dicom_eval = Dicom3DViewerAssignment(args.path, g)
+        dicom_eval = PointCloudAssignment(args.path, g)
         root = dicom_eval.run(original_evaluation)
         root.exportToJson(json_path)
         txt_content = sae.evalToString(root)
